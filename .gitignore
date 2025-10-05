@@ -1,0 +1,29 @@
+# Node modules
+node_modules/
+
+# Build output
+*.vsix
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Tokens (security)
+.ovsx
+.vsce
+
+# Temporary files
+*.tmp
+temp/
