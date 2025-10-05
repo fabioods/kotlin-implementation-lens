@@ -2,7 +2,7 @@
   "name": "kotlin-implementation-lens",
   "displayName": "Kotlin Implementation Lens",
   "description": "Show implementation count above Kotlin interfaces with one-click navigation, similar to Go's implementation lens",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "fabioods",
   "author": {
     "name": "Fabio Santos"
