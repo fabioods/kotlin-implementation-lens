@@ -1,0 +1,72 @@
+{
+  "name": "kotlin-implementation-lens",
+  "displayName": "Kotlin Implementation Lens",
+  "description": "Show implementation count above Kotlin interfaces with one-click navigation, similar to Go's implementation lens",
+  "version": "1.0.0",
+  "publisher": "fabioods",
+  "author": {
+    "name": "Fabio Santos"
+  },
+  "license": "MIT",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "kotlin",
+    "interface",
+    "implementation",
+    "codelens",
+    "navigation",
+    "gradle",
+    "android",
+    "jvm",
+    "go to implementation"
+  ],
+  "activationEvents": [
+    "onLanguage:kotlin"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kotlin-implementation-lens.showImplementations",
+        "title": "Kotlin: Show Implementations",
+        "category": "Kotlin"
+      },
+      {
+        "command": "kotlin-implementation-lens.clearCache",
+        "title": "Kotlin: Clear Implementation Lens Cache",
+        "category": "Kotlin"
+      }
+    ]
+  },
+  "scripts": {
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fabioods/kotlin-implementation-lens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fabioods/kotlin-implementation-lens/issues"
+  },
+  "homepage": "https://github.com/fabioods/kotlin-implementation-lens#readme",
+  "qna": "marketplace",
+  "badges": [
+    {
+      "url": "https://img.shields.io/badge/kotlin-supported-blue.svg",
+      "href": "https://kotlinlang.org/",
+      "description": "Kotlin Language Support"
+    }
+  ],
+  "galleryBanner": {
+    "color": "#7F52FF",
+    "theme": "dark"
+  }
+}
