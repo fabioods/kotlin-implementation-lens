@@ -1,29 +1,26 @@
+# Compiled output
+out/
+dist/
+*.vsix
+
 # Node modules
 node_modules/
 
-# Build output
-*.vsix
+# Test coverage
+coverage/
 
-# OS files
+# VS Code
+.vscode-test/
+
+# TypeScript
+*.tsbuildinfo
+
+# macOS
 .DS_Store
-Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Windows
+Thumbs.db
 
 # Logs
 *.log
-
-# Environment variables
-.env
-
-# Tokens (security)
-.ovsx
-.vsce
-
-# Temporary files
-*.tmp
-temp/
+npm-debug.log*

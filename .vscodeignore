@@ -1,12 +1,23 @@
+# Source files
+src/**
 .vscode/**
 .vscode-test/**
-.gitignore
-.yarnrc
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/.eslintrc.json
-**/*.map
-**/*.ts
+test/**
+
+# Build files
+tsconfig.json
+.eslintrc.json
+
+# Node
 node_modules/**
+package-lock.json
+
+# Git
+.git/**
+.gitignore
+
+# Other
+*.md
+!README.md
+!CHANGELOG.md
 .DS_Store
-*.vsix
