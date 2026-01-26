@@ -5,6 +5,25 @@ All notable changes to the Kotlin/Java Implementation Lens extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-01-26
+
+### Fixed
+- **🔧 Multiline Class Declaration Support**: Extension now correctly detects implementations with multiline class declarations
+  - Handles Kotlin primary constructors that span multiple lines
+  - Example: `class Impl(\n  param1: Type\n) : Interface {`
+  - Uses two-phase search: find candidate files, then read full content
+  - Solves issue where `: Interface` is on a different line than `class`
+
+### Changed
+- **Search Engine Refactoring**: Replaced line-by-line grep with full-file reading approach
+  - Phase 1: Find files mentioning interface name
+  - Phase 2: Read each file completely to detect implementations
+  - Better handling of complex Kotlin constructs
+
+### Improved
+- **Spring Boot Detection**: Better extraction of `@Service`, `@Repository`, `@Component` annotations from multiline classes
+- **Reliability**: More robust implementation detection for real-world Kotlin code
+
 ## [2.1.0] - 2025-01-26
 
 ### Added
