@@ -105,8 +105,29 @@ Automatically excludes test doubles:
 
 ## Configuration
 
-### Search Paths
-Customize where to search for implementations (default: Spring Boot structure):
+### 🎯 Automatic Module Detection (NEW!)
+
+**Just like IntelliJ IDEA**, the extension now automatically detects your project structure!
+
+**No configuration needed for:**
+- ✅ Gradle multi-module projects (reads `settings.gradle[.kts]`)
+- ✅ Maven multi-module projects (reads `pom.xml`)
+- ✅ Any project with `src/main/kotlin` or `src/main/java` directories
+
+**Example:** If you have:
+```
+my-project/
+├── settings.gradle.kts  # include(":core", ":application", ":domain")
+├── core/src/main/kotlin/
+├── application/src/main/kotlin/
+└── domain/src/main/kotlin/
+```
+
+The extension **automatically discovers** all 3 modules - **no manual configuration required!**
+
+### Search Paths (Manual Override)
+
+Only customize if you have a non-standard structure:
 
 ```json
 {
@@ -119,6 +140,8 @@ Customize where to search for implementations (default: Spring Boot structure):
   ]
 }
 ```
+
+**Note:** If you set custom paths, auto-detection is disabled.
 
 ### Exclude Paths
 Exclude directories from search:

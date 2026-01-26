@@ -17,8 +17,34 @@ import { extractImplementation, extractInterfaceName, extractMethodName, KotlinP
 import { getWorkspaceRoot, normalizePath, getLanguage, toAbsolute } from '../utils/pathUtils';
 import { getLogger } from '../utils/logger';
 import { getCacheManager } from '../cache/cacheManager';
+import { getModuleDetector } from './moduleDetector';
 
 export class SearchEngine implements ISearchEngine {
+    /**
+     * Resolve search paths: auto-detect or use configured
+     */
+    private async resolveSearchPaths(configuredPaths: string[]): Promise<string[]> {
+        // Check if user has explicitly configured paths (not defaults)
+        const defaultPaths = ['src/main/kotlin', 'src/main/java', 'src', 'app/src/main', 'core/src/main'];
+        const isUsingDefaults = JSON.stringify(configuredPaths.sort()) === JSON.stringify(defaultPaths.sort());
+
+        // If using defaults, try auto-detection (like IntelliJ)
+        if (isUsingDefaults || configuredPaths.length === 0) {
+            getLogger().info('Auto-detecting modules (IntelliJ-style)...');
+            const detected = await getModuleDetector().detectModules();
+
+            if (detected.length > 0) {
+                getLogger().info(`Auto-detected ${detected.length} source paths`);
+                return detected;
+            }
+
+            getLogger().info('No modules auto-detected, using defaults');
+        }
+
+        // Use configured paths
+        return configuredPaths;
+    }
+
     /**
      * Search for all implementations of an interface
      */
@@ -44,8 +70,12 @@ export class SearchEngine implements ISearchEngine {
             // Build file extensions
             const extensions = searchConfig.includeJavaFiles ? ['kt', 'java'] : ['kt'];
 
+            // Resolve search paths (auto-detect if using defaults)
+            const searchPaths = await this.resolveSearchPaths(searchConfig.searchPaths);
+            getLogger().debug(`Search paths: ${searchPaths.join(', ')}`);
+
             // Search for implementations in each search path
-            for (const searchPath of searchConfig.searchPaths) {
+            for (const searchPath of searchPaths) {
                 const absolutePath = toAbsolute(searchPath);
 
                 // Check if path exists

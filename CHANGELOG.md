@@ -5,6 +5,23 @@ All notable changes to the Kotlin/Java Implementation Lens extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-01-26
+
+### Added
+- **🎯 Automatic Module Detection (IntelliJ-style)**: Extension now automatically detects multi-module projects
+  - Reads `settings.gradle` or `settings.gradle.kts` to discover Gradle modules
+  - Reads `pom.xml` to discover Maven modules
+  - Falls back to scanning for `src/main/kotlin` and `src/main/java` directories
+  - **No manual configuration needed** for standard Gradle/Maven projects
+  - Mimics IntelliJ IDEA's automatic project structure detection
+
+### Changed
+- **Search Path Resolution**: When using default search paths, the extension now automatically detects modules instead of using hardcoded defaults
+
+### Improved
+- **Multi-Module Support**: Extension now works seamlessly with complex multi-module projects without requiring `.vscode/settings.json` configuration
+- **Spring Boot Projects**: Better support for typical Spring Boot project structures with core/, application/, domain/ modules
+
 ## [2.0.2] - 2025-01-26
 
 ### Changed
