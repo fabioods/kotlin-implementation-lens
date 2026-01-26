@@ -300,6 +300,6 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release history.
 
 ## Support
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/your-username/kotlin-implementation-lens/issues)
-- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/your-username/kotlin-implementation-lens/discussions)
-- 📖 **Documentation**: [GitHub Wiki](https://github.com/your-username/kotlin-implementation-lens/wiki)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/fabioods/kotlin-implementation-lens/issues)
+- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/fabioods/kotlin-implementation-lens/discussions)
+- 📖 **Documentation**: [GitHub Wiki](https://github.com/fabioods/kotlin-implementation-lens/wiki)
