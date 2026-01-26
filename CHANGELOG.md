@@ -5,6 +5,13 @@ All notable changes to the Kotlin/Java Implementation Lens extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2025-01-26
+
+### Changed
+- **Repository Links**: Updated all GitHub URLs to use correct repository owner (fabioods)
+- **Repository Cleanup**: Removed temporary publishing documentation and TODO files
+- **Package Cleanup**: Removed old VSIX package file from repository
+
 ## [2.0.1] - 2025-01-26
 
 ### Fixed
@@ -187,8 +194,8 @@ New configuration:
 ## Support
 
 For issues, questions, or feature requests:
-- GitHub Issues: https://github.com/your-username/kotlin-implementation-lens/issues
-- Documentation: https://github.com/your-username/kotlin-implementation-lens
+- GitHub Issues: https://github.com/fabioods/kotlin-implementation-lens/issues
+- Documentation: https://github.com/fabioods/kotlin-implementation-lens
 
 ---
 

@@ -2,7 +2,7 @@
   "name": "kotlin-implementation-lens",
   "displayName": "Kotlin/Java Implementation Lens",
   "description": "Navigate between Kotlin/Java interfaces and their implementations with CodeLens. Supports abstract classes, Spring Boot annotations, sealed types, and more.",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "publisher": "fabioods",
   "icon": "icon.png",
   "engines": {
@@ -146,11 +146,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/kotlin-implementation-lens"
+    "url": "https://github.com/fabioods/kotlin-implementation-lens"
   },
   "bugs": {
-    "url": "https://github.com/your-username/kotlin-implementation-lens/issues"
+    "url": "https://github.com/fabioods/kotlin-implementation-lens/issues"
   },
-  "homepage": "https://github.com/your-username/kotlin-implementation-lens#readme",
+  "homepage": "https://github.com/fabioods/kotlin-implementation-lens#readme",
   "license": "MIT"
 }
