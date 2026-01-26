@@ -156,7 +156,8 @@ export class SearchEngine implements ISearchEngine {
         const files: string[] = [];
 
         try {
-            const extPattern = extensions.map(ext => `*.${ext}`).join(' ');
+            // Build include args - each extension needs its own --include flag
+            const includeArgs = extensions.map(ext => `--include="*.${ext}"`).join(' ');
 
             // Build exclude args
             let excludeArgs = '';
@@ -166,7 +167,7 @@ export class SearchEngine implements ISearchEngine {
 
             // Search for files mentioning the interface name (not pattern matching)
             // This will find files even if class declaration spans multiple lines
-            const grepCommand = `grep -rl ${excludeArgs} "${interfaceName}" --include="${extPattern}" "${searchPath}"`;
+            const grepCommand = `grep -rl ${excludeArgs} "${interfaceName}" ${includeArgs} "${searchPath}"`;
             getLogger().debug(`Finding candidates: ${grepCommand}`);
 
             const result = await this.executeCommand(grepCommand);
@@ -556,9 +557,10 @@ export class SearchEngine implements ISearchEngine {
         extensions: string[]
     ): Promise<InterfaceDeclaration | null> {
         try {
-            const extPattern = extensions.map(ext => `*.${ext}`).join(' ');
+            // Build include args - each extension needs its own --include flag
+            const includeArgs = extensions.map(ext => `--include="*.${ext}"`).join(' ');
             const pattern = `(interface|abstract class|sealed interface|sealed class).*${interfaceName}`;
-            const grepCommand = `grep -rn -E "${pattern}" --include="${extPattern}" "${searchPath}"`;
+            const grepCommand = `grep -rn -E "${pattern}" ${includeArgs} "${searchPath}"`;
 
             const result = await this.executeCommand(grepCommand);
             const lines = result.split('\n').filter(line => line.trim());

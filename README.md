@@ -303,6 +303,189 @@ sealed interface Result<out T>
 - [ ] Test coverage integration
 - [ ] Multi-workspace support
 
+## Publishing
+
+### How to Deploy Extensions
+
+This extension is published on two marketplaces:
+- **VS Code Marketplace**: https://marketplace.visualstudio.com/items?itemName=fabioods.kotlin-implementation-lens
+- **Open VSX Registry**: https://open-vsx.org/extension/fabioods/kotlin-implementation-lens
+
+#### Prerequisites
+
+1. **Install vsce** (VS Code Extension Manager):
+   ```bash
+   npm install -g @vscode/vsce
+   ```
+
+2. **Install ovsx** (Open VSX CLI):
+   ```bash
+   npm install -g ovsx
+   ```
+
+3. **Get Access Tokens**:
+   - **VS Code Marketplace**: Create Personal Access Token at https://dev.azure.com/
+     - Organization: All accessible organizations
+     - Scopes: `Marketplace > Manage`
+     - Copy the token and store securely
+
+   - **Open VSX**: Create Access Token at https://open-vsx.org/user-settings/tokens
+     - Login with GitHub
+     - Generate token with publish permissions
+
+#### Step 1: Update Version
+
+```bash
+# Edit package.json and CHANGELOG.md with new version
+vim package.json  # Update "version" field
+vim CHANGELOG.md  # Add release notes
+```
+
+#### Step 2: Compile and Test
+
+```bash
+# Compile TypeScript
+npm run compile
+
+# Test extension locally
+code --install-extension kotlin-implementation-lens-X.Y.Z.vsix
+
+# Verify it works in your projects
+```
+
+#### Step 3: Commit and Tag
+
+```bash
+# Commit changes
+git add -A
+git commit -m "Release vX.Y.Z: Brief description"
+
+# Push to GitHub
+git push origin main
+
+# Create and push tag
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+#### Step 4: Publish to VS Code Marketplace
+
+```bash
+# Package extension
+vsce package
+
+# Login (first time only)
+vsce login fabioods
+
+# Publish
+vsce publish
+
+# Or combine package + publish
+vsce publish minor  # or major/patch
+```
+
+**Note**: If you get SSL certificate errors behind a corporate proxy:
+```bash
+NODE_TLS_REJECT_UNAUTHORIZED=0 vsce publish
+```
+
+#### Step 5: Publish to Open VSX
+
+```bash
+# Set access token (first time only)
+export OVSX_PAT=your-open-vsx-token
+
+# Publish (uses the .vsix file created by vsce)
+ovsx publish kotlin-implementation-lens-X.Y.Z.vsix -p $OVSX_PAT
+```
+
+#### Automated Publishing Script
+
+Create `publish.sh`:
+```bash
+#!/bin/bash
+set -e
+
+VERSION=$1
+
+if [ -z "$VERSION" ]; then
+    echo "Usage: ./publish.sh X.Y.Z"
+    exit 1
+fi
+
+# Update version
+npm version $VERSION --no-git-tag-version
+
+# Compile
+npm run compile
+
+# Commit
+git add -A
+git commit -m "Release v$VERSION"
+git push origin main
+
+# Tag
+git tag -a v$VERSION -m "Release v$VERSION"
+git push origin v$VERSION
+
+# Package
+vsce package
+
+# Publish to VS Code Marketplace
+NODE_TLS_REJECT_UNAUTHORIZED=0 vsce publish
+
+# Publish to Open VSX
+ovsx publish kotlin-implementation-lens-$VERSION.vsix -p $OVSX_PAT
+
+echo "✅ Published v$VERSION to both marketplaces!"
+```
+
+Make it executable:
+```bash
+chmod +x publish.sh
+```
+
+Usage:
+```bash
+./publish.sh 2.3.0
+```
+
+#### Verification
+
+After publishing, verify on both marketplaces:
+- **VS Code Marketplace**: Check https://marketplace.visualstudio.com/items?itemName=fabioods.kotlin-implementation-lens
+- **Open VSX**: Check https://open-vsx.org/extension/fabioods/kotlin-implementation-lens
+
+Wait 5-10 minutes for updates to appear.
+
+#### Troubleshooting
+
+**Issue**: `Publisher 'fabioods' not found`
+- Solution: Create publisher at https://marketplace.visualstudio.com/manage/publishers/
+
+**Issue**: `Extension already exists with this version`
+- Solution: Increment version number in package.json
+
+**Issue**: `Authentication failed`
+- Solution: Regenerate access token and login again with `vsce login fabioods`
+
+**Issue**: Open VSX shows old version
+- Solution: Wait 10-15 minutes for CDN cache to clear
+
+#### Publishing Checklist
+
+- [ ] Update version in `package.json`
+- [ ] Update `CHANGELOG.md` with release notes
+- [ ] Compile TypeScript: `npm run compile`
+- [ ] Test extension locally
+- [ ] Commit changes
+- [ ] Create git tag
+- [ ] Push to GitHub (including tag)
+- [ ] Publish to VS Code Marketplace: `vsce publish`
+- [ ] Publish to Open VSX: `ovsx publish`
+- [ ] Verify on both marketplaces
+- [ ] Test installation from marketplace: `code --install-extension fabioods.kotlin-implementation-lens`
+
 ## Contributing
 
 Contributions welcome! Please open an issue or PR on GitHub.
