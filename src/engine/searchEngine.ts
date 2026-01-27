@@ -400,15 +400,22 @@ export class SearchEngine implements ISearchEngine {
         methodName: string
     ): Promise<{ lineNumber: number; signature?: string } | null> {
         try {
+            getLogger().debug(`Looking for method ${methodName} in ${implementation.className} at ${implementation.filePath}`);
+
             const document = await vscode.workspace.openTextDocument(implementation.filePath);
             const text = document.getText();
             const lines = text.split('\n');
             const language = getLanguage(implementation.filePath);
 
-            if (!language) return null;
+            if (!language) {
+                getLogger().debug(`No language detected for ${implementation.filePath}`);
+                return null;
+            }
 
             let inClass = false;
             let braceCount = 0;
+            let methodsFound = 0;
+            let foundOpeningBrace = false;
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
@@ -417,30 +424,62 @@ export class SearchEngine implements ISearchEngine {
                 // Find class start
                 if (!inClass && trimmed.includes(`class ${implementation.className}`)) {
                     inClass = true;
+                    getLogger().debug(`Found class ${implementation.className} at line ${i}`);
+
+                    // Check if opening brace is on this line
+                    if (line.includes('{')) {
+                        foundOpeningBrace = true;
+                        braceCount = 1; // Start counting from the class opening brace
+                        getLogger().debug(`Opening brace found on class declaration line, braceCount: ${braceCount}`);
+                    }
+                    continue; // Skip to next line
                 }
 
                 if (!inClass) continue;
 
+                // If we haven't found the opening brace yet, keep looking
+                if (!foundOpeningBrace) {
+                    if (line.includes('{')) {
+                        foundOpeningBrace = true;
+                        braceCount = 1;
+                        getLogger().debug(`Found opening brace at line ${i}, starting method scan`);
+                    }
+                    continue;
+                }
+
                 // Track braces
-                braceCount += (line.match(/{/g) || []).length;
-                braceCount -= (line.match(/}/g) || []).length;
+                const openBraces = (line.match(/{/g) || []).length;
+                const closeBraces = (line.match(/}/g) || []).length;
+                braceCount += openBraces - closeBraces;
+
+                if (openBraces > 0 || closeBraces > 0) {
+                    getLogger().debug(`Line ${i}: braceCount = ${braceCount} (opened: ${openBraces}, closed: ${closeBraces})`);
+                }
 
                 // Check for method
                 const extractedMethodName = extractMethodName(trimmed, language);
+                if (extractedMethodName) {
+                    methodsFound++;
+                    getLogger().debug(`Method #${methodsFound}: ${extractedMethodName} vs ${methodName}`);
+                }
                 if (extractedMethodName === methodName) {
+                    getLogger().debug(`✓ Found method ${methodName} at line ${i}`);
                     return {
                         lineNumber: i,
                         signature: trimmed
                     };
                 }
 
-                // End of class
-                if (braceCount === 0 && inClass) {
+                // End of class (when we close the last brace)
+                if (braceCount === 0) {
+                    getLogger().debug(`End of class ${implementation.className} at line ${i}, found ${methodsFound} methods total`);
                     break;
                 }
             }
+
+            getLogger().debug(`Method ${methodName} not found in ${implementation.className} (scanned ${methodsFound} methods)`);
         } catch (error) {
-            getLogger().debug(`Could not find method ${methodName} in ${implementation.className}`);
+            getLogger().error(`Error finding method ${methodName} in ${implementation.className}`, error as Error);
         }
 
         return null;

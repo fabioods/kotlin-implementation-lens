@@ -33,8 +33,8 @@ export const KotlinPatterns = {
     // Delegation pattern (by keyword)
     delegation: /:\s*([A-Z]\w*)\s+by\s+/,
 
-    // Method declaration
-    method: /^\s*(?:suspend\s+)?(?:override\s+)?fun\s+([a-z_]\w*)\s*\(/,
+    // Method declaration (accepts both "override suspend" and "suspend override")
+    method: /^\s*(?:(?:override|suspend)\s+)?(?:(?:override|suspend)\s+)?fun\s+([a-z_]\w*)\s*\(/,
 
     // Abstract method
     abstractMethod: /^\s*abstract\s+fun\s+([a-z_]\w*)\s*\(/,

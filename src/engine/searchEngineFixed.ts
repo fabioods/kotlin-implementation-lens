@@ -97,7 +97,8 @@ export class SearchEngineFixed {
         const files: string[] = [];
 
         try {
-            const extPattern = extensions.map(ext => `*.${ext}`).join(' ');
+            // Build include args - each extension needs its own --include flag
+            const includeArgs = extensions.map(ext => `--include="*.${ext}"`).join(' ');
 
             // Build exclude args
             let excludeArgs = '';
@@ -106,7 +107,7 @@ export class SearchEngineFixed {
             }
 
             // Search for files mentioning the interface name
-            const grepCommand = `grep -rl ${excludeArgs} "${interfaceName}" --include="${extPattern}" "${searchPath}"`;
+            const grepCommand = `grep -rl ${excludeArgs} "${interfaceName}" ${includeArgs} "${searchPath}"`;
             getLogger().debug(`Finding candidates: ${grepCommand}`);
 
             const result = await this.executeCommand(grepCommand);

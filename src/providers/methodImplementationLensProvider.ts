@@ -1,6 +1,6 @@
 /**
  * Method Implementation Lens Provider
- * Shows "→ N implementations" for each method in an interface
+ * Shows "👁️ N implementations" above each method in an interface
  */
 
 import * as vscode from 'vscode';
@@ -118,12 +118,12 @@ export class MethodImplementationLensProvider implements vscode.CodeLensProvider
                 continue;
             }
 
-            // Create range for CodeLens (at the end of the line)
-            const range = new vscode.Range(i, line.length, i, line.length);
+            // Create range for CodeLens (at the beginning of the line)
+            const range = new vscode.Range(i, 0, i, line.length);
 
             // Create CodeLens
             const codeLens = new vscode.CodeLens(range, {
-                title: '$(loading~spin) ...',
+                title: '$(loading~spin) Loading implementations...',
                 command: ''
             });
 
@@ -180,18 +180,18 @@ export class MethodImplementationLensProvider implements vscode.CodeLensProvider
             // Update CodeLens with result
             codeLens.command = {
                 title: count === 0
-                    ? ''
+                    ? '$(search) No implementations found'
                     : count === 1
-                        ? '$(arrow-right) 1 impl'
-                        : `$(arrow-right) ${count} impls`,
-                command: count > 0 ? 'kotlin-implementation-lens.showMethodImplementations' : '',
+                        ? '$(eye) 1 implementation'
+                        : `$(eye) ${count} implementations`,
+                command: 'kotlin-implementation-lens.showMethodImplementations',
                 arguments: [interfaceName, methodName, implementations]
             };
 
         } catch (error) {
             getLogger().error('Error finding method implementations', error as Error);
             codeLens.command = {
-                title: '',
+                title: '$(error) Error finding implementations',
                 command: ''
             };
         }
