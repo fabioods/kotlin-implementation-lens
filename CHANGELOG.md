@@ -7,13 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **📚 Publishing Documentation**: Complete deployment guide for VS Code Marketplace and Open VSX
-  - Step-by-step tutorial in README.md
-  - Detailed guide in `.claude/PUBLISHING_GUIDE.md`
-  - Automated publishing script template
-  - Troubleshooting section
-  - Publishing checklist
+## [2.2.3] - 2025-01-27
+
+### Fixed
+- **🎯 Interface Matching Precision**: Use word boundary regex to prevent false positives
+  - Prevents matching substrings (e.g., "FooClient" no longer matches "FooClientException")
+  - More accurate interface detection across the codebase
+- **🔧 Kotlin Constructor Parameters**: Better distinction between constructor params and interface implementation
+  - Correctly identifies when an interface appears in constructor params vs actual implementation
+  - Prevents false positives where constructor parameter types match interface names
+- **📏 Large Constructor Support**: Increased class block reading limit from 10 to 20 lines
+  - Handles classes with large constructor parameter lists
+  - Better support for real-world Kotlin code patterns
+
+### Improved
+- **⚡ Performance Optimization**: Added interface declaration caching with pre-fetching
+  - Caches interface declarations per class to avoid repeated lookups
+  - Pre-fetches interface declarations asynchronously for better responsiveness
+  - Significant performance improvement for classes with multiple overridden methods
+- **🎨 UX Enhancement**: Hide CodeLens errors instead of showing confusing messages
+  - Cleaner editor experience when interface resolution fails
+  - Removes visual clutter from error states
+- **🐛 Debug Logging**: Added comprehensive debug logging for troubleshooting
+  - Detailed logs for class detection, interface matching, and caching
+  - Helps diagnose issues in complex codebases
+
+## [2.2.2] - 2025-01-26
+
+### Fixed
+- **🔄 Reverse Navigation**: Improved implementation → interface navigation
+
+## [2.2.1] - 2025-01-26
+
+### Fixed
+- **🔍 Method Detection**: Improved method detection and CodeLens UX
 
 ## [2.2.0] - 2025-01-26
 

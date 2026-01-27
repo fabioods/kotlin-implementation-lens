@@ -69,6 +69,9 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
         let inClass = false;
         let braceCount = 0;
         let foundOpeningBrace = false;
+        let classDeclarationBuffer: string[] = [];
+        let inClassDeclaration = false;
+        let interfaceDeclarationsCache: Map<string, any[]> = new Map(); // Cache per class
 
         for (let i = 0; i < lines.length; i++) {
             if (token.isCancellationRequested) {
@@ -85,29 +88,49 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
 
             // Check for class implementing interface
             if (!inClass) {
-                const extracted = extractImplementation(trimmed, language);
-                if (extracted && extracted.className) {
-                    currentClass = extracted.className;
-                    currentInterfaces = [extracted.interfaceName];
-                    inClass = true;
-                    foundOpeningBrace = false;
+                // Start of class declaration
+                if (!inClassDeclaration && /^(?:data\s+)?(?:open\s+)?(?:abstract\s+)?class\s+\w+/.test(trimmed)) {
+                    inClassDeclaration = true;
+                    classDeclarationBuffer = [trimmed];
+                }
+                // Continue multiline declaration
+                else if (inClassDeclaration) {
+                    classDeclarationBuffer.push(trimmed);
+                }
 
-                    getLogger().debug(`Found implementation class ${currentClass} implementing ${extracted.interfaceName}`);
+                // Complete declaration found (has opening brace)
+                if (inClassDeclaration && line.includes('{')) {
+                    const fullDeclaration = classDeclarationBuffer.join(' ');
+                    const extracted = extractImplementation(fullDeclaration, language);
 
-                    // Check for multiple interfaces (comma-separated)
-                    const multiMatch = trimmed.match(/:\s*([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)/);
-                    if (multiMatch) {
-                        const interfaces = multiMatch[1].split(',').map(s => s.trim());
-                        currentInterfaces = interfaces;
-                        getLogger().debug(`Class implements: ${interfaces.join(', ')}`);
-                    }
-
-                    // Check if opening brace is on this line
-                    if (line.includes('{')) {
+                    if (extracted && extracted.className) {
+                        currentClass = extracted.className;
+                        currentInterfaces = [extracted.interfaceName];
+                        inClass = true;
                         foundOpeningBrace = true;
                         braceCount = 1;
-                        getLogger().debug(`Opening brace found on class declaration line`);
+                        inClassDeclaration = false;
+                        classDeclarationBuffer = [];
+
+                        // Check for multiple interfaces after the ') :'
+                        const implementsMatch = fullDeclaration.match(/\)\s*:\s*([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)/);
+                        if (implementsMatch) {
+                            const interfaces = implementsMatch[1].split(',').map(s => s.trim());
+                            currentInterfaces = interfaces;
+                        }
+
+                        // Pre-fetch interface declarations once for this class (async, non-blocking)
+                        this.prefetchInterfaceDeclarations(currentInterfaces, searchConfig, interfaceDeclarationsCache);
+                    } else {
+                        // Not an implementation, reset
+                        inClassDeclaration = false;
+                        classDeclarationBuffer = [];
                     }
+                    continue;
+                }
+
+                // If still building declaration, continue to next line
+                if (inClassDeclaration) {
                     continue;
                 }
             }
@@ -133,7 +156,6 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
 
             // End of class
             if (braceCount === 0) {
-                getLogger().debug(`End of class ${currentClass} at line ${i}`);
                 inClass = false;
                 currentClass = null;
                 currentInterfaces = [];
@@ -152,8 +174,6 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
                 continue;
             }
 
-            getLogger().debug(`Found override method ${methodName} in ${currentClass}`);
-
             // Create range for CodeLens (at the beginning of the line)
             const range = new vscode.Range(i, 0, i, line.length);
 
@@ -170,7 +190,8 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
                 currentInterfaces,
                 methodName,
                 searchConfig,
-                codeLens
+                codeLens,
+                interfaceDeclarationsCache
             );
         }
 
@@ -188,23 +209,58 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
     }
 
     /**
+     * Pre-fetch interface declarations for all interfaces in a class
+     */
+    private async prefetchInterfaceDeclarations(
+        interfaceNames: string[],
+        searchConfig: SearchConfig,
+        cache: Map<string, any[]>
+    ): Promise<void> {
+        for (const interfaceName of interfaceNames) {
+            if (cache.has(interfaceName)) {
+                continue; // Already cached
+            }
+
+            try {
+                const interfaces = await getSearchEngine().findInterfaceDeclarations(
+                    interfaceName,
+                    searchConfig
+                );
+                cache.set(interfaceName, interfaces);
+                getLogger().debug(`[ReverseNav] Pre-fetched ${interfaces.length} declarations for ${interfaceName}`);
+            } catch (error) {
+                getLogger().error(`Error pre-fetching interface ${interfaceName}`, error as Error);
+                cache.set(interfaceName, []); // Cache empty result to avoid retry
+            }
+        }
+    }
+
+    /**
      * Find interface declarations and update CodeLens
      */
     private async findInterfaceDeclarations(
         interfaceNames: string[],
         methodName: string,
         searchConfig: SearchConfig,
-        codeLens: vscode.CodeLens
+        codeLens: vscode.CodeLens,
+        cache: Map<string, any[]>
     ): Promise<void> {
         try {
             // Find interfaces that declare this method
             const matchingInterfaces = [];
 
             for (const interfaceName of interfaceNames) {
-                const interfaces = await getSearchEngine().findInterfaceDeclarations(
-                    interfaceName,
-                    searchConfig
-                );
+                // Try cache first
+                let interfaces = cache.get(interfaceName);
+
+                // If not in local cache, fetch from search engine
+                if (!interfaces) {
+                    interfaces = await getSearchEngine().findInterfaceDeclarations(
+                        interfaceName,
+                        searchConfig
+                    );
+                    cache.set(interfaceName, interfaces);
+                }
 
                 // Check if this interface has the method
                 for (const interfaceDecl of interfaces) {
@@ -215,9 +271,8 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
             }
 
             if (matchingInterfaces.length === 0) {
-                getLogger().debug(`No interface found for method ${methodName}`);
                 codeLens.command = {
-                    title: '$(question) No interface found',
+                    title: '', // Hide if no interface found
                     command: ''
                 };
                 return;
@@ -225,14 +280,12 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
 
             // Update CodeLens with result
             if (matchingInterfaces.length === 1) {
-                getLogger().debug(`Found interface ${matchingInterfaces[0].name} for method ${methodName}`);
                 codeLens.command = {
                     title: `$(symbol-interface) Go to ${matchingInterfaces[0].name}`,
                     command: 'kotlin-implementation-lens.gotoInterface',
                     arguments: [matchingInterfaces[0]]
                 };
             } else {
-                getLogger().debug(`Found ${matchingInterfaces.length} interfaces for method ${methodName}`);
                 codeLens.command = {
                     title: `$(symbol-interface) Go to interface (${matchingInterfaces.length} options)`,
                     command: 'kotlin-implementation-lens.gotoInterface',
@@ -243,7 +296,7 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
         } catch (error) {
             getLogger().error('Error finding interface declarations', error as Error);
             codeLens.command = {
-                title: '$(error) Error finding interface',
+                title: '', // Hide on error
                 command: ''
             };
         }

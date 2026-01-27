@@ -193,22 +193,33 @@ export class SearchEngine implements ISearchEngine {
         const implementations: Implementation[] = [];
 
         try {
+            getLogger().debug(`Extracting implementations from file: ${filePath}`);
             const document = await vscode.workspace.openTextDocument(filePath);
             const text = document.getText();
             const lines = text.split('\n');
             const language = getLanguage(filePath);
 
-            if (!language) return implementations;
+            if (!language) {
+                getLogger().debug(`No language detected for ${filePath}`);
+                return implementations;
+            }
+
+            getLogger().debug(`Processing ${lines.length} lines in ${filePath}`);
 
             // Read file with multiline support
             let i = 0;
+            let classDeclarationsFound = 0;
             while (i < lines.length) {
                 const line = lines[i].trim();
 
                 // Check if line starts a class/object declaration
                 if (this.isClassDeclaration(line, language)) {
+                    classDeclarationsFound++;
+                    getLogger().debug(`Found class declaration at line ${i}: ${line.substring(0, 60)}...`);
                     // Read the next few lines to find inheritance
-                    const classBlock = this.readClassDeclaration(lines, i, 10);
+                    // Increased from 10 to 20 to handle large constructor parameter lists
+                    const classBlock = this.readClassDeclaration(lines, i, 20);
+                    getLogger().debug(`Class block read (${classBlock.length} chars): ${classBlock.substring(0, 150).replace(/\n/g, ' ')}...`);
                     const impl = await this.extractImplementationFromBlock(
                         classBlock,
                         interfaceName,
@@ -218,12 +229,15 @@ export class SearchEngine implements ISearchEngine {
                     );
 
                     if (impl) {
+                        getLogger().debug(`✓ Found valid implementation: ${impl.className}`);
                         implementations.push(impl);
                     }
                 }
 
                 i++;
             }
+
+            getLogger().debug(`Finished processing ${filePath}: found ${classDeclarationsFound} class declarations, ${implementations.length} implementations`);
 
         } catch (error) {
             getLogger().debug(`Could not read file: ${filePath}`);
@@ -249,33 +263,20 @@ export class SearchEngine implements ISearchEngine {
      */
     private readClassDeclaration(lines: string[], startIndex: number, maxLines: number): string {
         let block = '';
-        let braceCount = 0;
         let foundColon = false;
 
         for (let i = startIndex; i < Math.min(startIndex + maxLines, lines.length); i++) {
             const line = lines[i];
             block += line + '\n';
 
-            // Track if we've found the inheritance part
+            // Track if we've found the inheritance part (: after class name)
             if (line.includes(':')) {
                 foundColon = true;
             }
 
-            // Track opening brace
-            if (line.includes('{')) {
-                braceCount++;
-                // If we've found colon and opening brace, we have the full declaration
-                if (foundColon) {
-                    break;
-                }
-            }
-
-            // Also stop at closing parenthesis + colon (Kotlin primary constructor)
-            if (/\)\s*:/.test(line)) {
-                // Read one more line to get the interface name
-                if (i + 1 < lines.length) {
-                    block += lines[i + 1] + '\n';
-                }
+            // Stop when we find the opening brace of the class body
+            // This brace comes AFTER the inheritance/implementation section
+            if (line.includes('{') && foundColon) {
                 break;
             }
         }
@@ -297,7 +298,9 @@ export class SearchEngine implements ISearchEngine {
         const singleLine = block.replace(/\n/g, ' ').replace(/\s+/g, ' ');
 
         // Check if this block implements the interface
-        if (!singleLine.includes(interfaceName)) {
+        // Use word boundary regex to avoid matching substrings (e.g., "FooClient" shouldn't match "FooClientException")
+        const interfaceRegex = new RegExp(`\\b${interfaceName}\\b`);
+        if (!interfaceRegex.test(singleLine)) {
             return null;
         }
 
@@ -306,14 +309,42 @@ export class SearchEngine implements ISearchEngine {
         if (!classMatch) return null;
 
         const className = classMatch[1];
+        getLogger().debug(`Checking if ${className} implements ${interfaceName}...`);
+        getLogger().debug(`Single line: ${singleLine.substring(0, 200)}...`);
 
         // Verify it actually implements the interface (not just mentions it)
-        const implementsPattern = language === 'kotlin'
-            ? new RegExp(`class\\s+${className}[^{]*:\\s*[^{]*${interfaceName}`)
-            : new RegExp(`class\\s+${className}[^{]*implements[^{]*${interfaceName}`);
-
-        if (!implementsPattern.test(singleLine)) {
-            return null;
+        // For Kotlin, we need to distinguish between:
+        // 1. Implementation: class Foo(...) : Interface or class Foo(...) : BaseClass, Interface
+        // 2. Constructor param: class Foo(val x: Interface) - should NOT match
+        // Strategy: Match if interface appears after ): in the inheritance section (not in constructor params)
+        if (language === 'kotlin') {
+            // Find the position of the closing parenthesis and colon (if they exist)
+            const constructorCloseMatch = singleLine.match(/class\s+\w+\s*\([^)]*\)\s*:/);
+            if (constructorCloseMatch) {
+                getLogger().debug(`Found constructor with params, checking after ):`);
+                // If there's a constructor, check if interface appears after it
+                const afterConstructor = singleLine.substring(constructorCloseMatch.index! + constructorCloseMatch[0].length);
+                getLogger().debug(`After constructor: ${afterConstructor.substring(0, 100)}...`);
+                const interfaceInInheritance = new RegExp(`\\b${interfaceName}\\b`).test(afterConstructor);
+                getLogger().debug(`Interface in inheritance section: ${interfaceInInheritance}`);
+                if (!interfaceInInheritance) {
+                    return null;
+                }
+            } else {
+                getLogger().debug(`No constructor found, checking direct inheritance`);
+                // No constructor with params, check if it's after class name and colon
+                const noConstructorMatch = singleLine.match(new RegExp(`class\\s+${className}\\s*:\\s*[^{]*\\b${interfaceName}\\b`));
+                getLogger().debug(`No constructor match result: ${noConstructorMatch ? 'FOUND' : 'NOT FOUND'}`);
+                if (!noConstructorMatch) {
+                    return null;
+                }
+            }
+        } else {
+            // Java: simple implements check
+            const implementsPattern = new RegExp(`class\\s+${className}[^{]*implements[^{]*\\b${interfaceName}\\b`);
+            if (!implementsPattern.test(singleLine)) {
+                return null;
+            }
         }
 
         // Extract annotations (from original block with newlines)
@@ -560,23 +591,31 @@ export class SearchEngine implements ISearchEngine {
                 const language = getLanguage(filePath);
                 if (!language) continue;
 
-                // Read file and extract interface names
+                // Read file and check if it's an interface declaration
                 const document = await vscode.workspace.openTextDocument(filePath);
                 const text = document.getText();
+                const lines = text.split('\n');
 
-                // Try to find what interface this class implements
-                const match = text.match(new RegExp(`class\\s+${className}[^{]*:\\s*([A-Z]\\w*)`));
-                if (match) {
-                    const interfaceName = match[1];
+                // Look for interface/abstract class declaration
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    const extractedName = extractInterfaceName(line, language);
 
-                    // Now search for the interface definition
-                    const interfaceDecl = await this.findInterfaceDeclaration(
-                        interfaceName,
-                        searchPath,
-                        extensions
-                    );
-                    if (interfaceDecl) {
-                        interfaces.push(interfaceDecl);
+                    if (extractedName === className) {
+                        // Determine type
+                        let type: 'interface' | 'abstract' | 'sealed' = 'interface';
+                        if (line.includes('abstract class')) type = 'abstract';
+                        else if (line.includes('sealed')) type = 'sealed';
+
+                        interfaces.push({
+                            name: className,
+                            filePath,
+                            lineNumber: i,
+                            type,
+                            language,
+                            methods: []
+                        });
+                        break; // Found it, move to next file
                     }
                 }
             }
