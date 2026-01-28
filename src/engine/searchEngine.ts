@@ -113,24 +113,29 @@ export class SearchEngine implements ISearchEngine {
             const searchPaths = await this.resolveSearchPaths(searchConfig.searchPaths);
             getLogger().debug(`Search paths: ${searchPaths.join(', ')}`);
 
-            // Search for implementations in each search path
-            for (const searchPath of searchPaths) {
-                const absolutePath = toAbsolute(searchPath);
-
-                // Check if path exists
-                if (!fs.existsSync(absolutePath)) {
-                    getLogger().debug(`Skipping non-existent path: ${absolutePath}`);
-                    continue;
-                }
-
-                // Search in this path
-                const pathImplementations = await this.searchInPath(
-                    interfaceName,
-                    absolutePath,
-                    extensions,
-                    searchConfig.excludePaths
+            // Execute all searches in parallel for better performance
+            const searchPromises = searchPaths
+                .map(searchPath => toAbsolute(searchPath))
+                .filter(absolutePath => {
+                    if (!fs.existsSync(absolutePath)) {
+                        getLogger().debug(`Skipping non-existent path: ${absolutePath}`);
+                        return false;
+                    }
+                    return true;
+                })
+                .map(absolutePath =>
+                    this.searchInPath(
+                        interfaceName,
+                        absolutePath,
+                        extensions,
+                        searchConfig.excludePaths
+                    )
                 );
 
+            const results = await Promise.all(searchPromises);
+
+            // Flatten all results
+            for (const pathImplementations of results) {
                 implementations.push(...pathImplementations);
             }
 
@@ -647,20 +652,23 @@ export class SearchEngine implements ISearchEngine {
         try {
             const extensions = searchConfig.includeJavaFiles ? ['kt', 'java'] : ['kt'];
 
-            for (const searchPath of searchConfig.searchPaths) {
-                const absolutePath = toAbsolute(searchPath);
-
-                if (!fs.existsSync(absolutePath)) {
-                    continue;
-                }
-
-                const pathInterfaces = await this.searchInterfacesInPath(
-                    className,
-                    absolutePath,
-                    extensions,
-                    searchConfig.excludePaths
+            // Execute all searches in parallel for better performance
+            const searchPromises = searchConfig.searchPaths
+                .map(searchPath => toAbsolute(searchPath))
+                .filter(absolutePath => fs.existsSync(absolutePath))
+                .map(absolutePath =>
+                    this.searchInterfacesInPath(
+                        className,
+                        absolutePath,
+                        extensions,
+                        searchConfig.excludePaths
+                    )
                 );
 
+            const results = await Promise.all(searchPromises);
+
+            // Flatten all results
+            for (const pathInterfaces of results) {
                 interfaces.push(...pathInterfaces);
             }
 

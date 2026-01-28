@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2025-01-28
+
+### Fixed
+- **🔄 Reverse Navigation Enhancement**: Improved detection of interfaces when class extends parent class with constructor
+  - Previously: `class Impl(...) : BaseClass(...), Interface` only detected `BaseClass`
+  - Now: Correctly filters out parent class constructors and identifies `Interface`
+  - Example: `HolidayWebClient` now correctly navigates to `HolidayClient` instead of `BaseClient`
+  - Handles complex inheritance chains with constructor calls and generics
+  - Implements smart parsing that distinguishes between class constructors (with parentheses) and interface names
+
+### Performance
+- **⚡ Parallel Search Execution**: Grep searches now run in parallel across all search paths
+  - Previously: Sequential execution (3.3s + 2.4s = ~6s total)
+  - Now: Parallel execution (~3.3s total - time of slowest grep)
+  - **2x faster** for projects with multiple modules
+  - Applies to both interface declarations and implementation searches
+  - Significantly improves first-time CodeLens loading in multi-module projects
+
+### Technical
+- Refactored `executeImplementationSearch` to use `Promise.all()` for parallel grep execution
+- Refactored `executeInterfaceDeclarationSearch` to use `Promise.all()` for parallel grep execution
+- Added `extractTypeNameFromInheritance()` helper function for parsing inheritance declarations
+- Enhanced reverse navigation parsing with depth tracking for parentheses and angle brackets
+
 ## [2.3.1] - 2025-01-27
 
 ### Added

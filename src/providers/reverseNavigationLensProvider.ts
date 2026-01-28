@@ -19,6 +19,56 @@ interface ReverseCodeLens extends vscode.CodeLens {
     searchConfig: SearchConfig;
 }
 
+/**
+ * Extract type name from an inheritance section part
+ * Returns null if it's a class constructor call (has parentheses), otherwise returns the interface name
+ * Examples:
+ *   "BaseClient(config = x, builder = y)" -> null (class constructor)
+ *   "HolidayClient" -> "HolidayClient" (interface)
+ *   "SomeInterface<T>" -> "SomeInterface" (generic interface)
+ */
+function extractTypeNameFromInheritance(part: string): string | null {
+    const trimmed = part.trim();
+    if (!trimmed) return null;
+
+    // Extract the type name (first word starting with uppercase)
+    const typeMatch = trimmed.match(/^([A-Z]\w*)/);
+    if (!typeMatch) return null;
+
+    const typeName = typeMatch[1];
+
+    // Check if followed by parentheses (class constructor call)
+    // Look for "(" after the type name (may have generics in between)
+    const afterTypeName = trimmed.substring(typeName.length).trim();
+
+    // If it starts with <, skip the generic part
+    let checkPos = 0;
+    if (afterTypeName.startsWith('<')) {
+        // Find matching >
+        let depth = 0;
+        for (let i = 0; i < afterTypeName.length; i++) {
+            if (afterTypeName[i] === '<') depth++;
+            else if (afterTypeName[i] === '>') {
+                depth--;
+                if (depth === 0) {
+                    checkPos = i + 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Check if there's a ( after the type name (and optional generics)
+    const remaining = afterTypeName.substring(checkPos).trim();
+    if (remaining.startsWith('(')) {
+        // This is a class constructor call, not an interface
+        return null;
+    }
+
+    // This is an interface
+    return typeName;
+}
+
 export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
@@ -120,11 +170,43 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
                         inClassDeclaration = false;
                         classDeclarationBuffer = [];
 
-                        // Check for multiple interfaces after the ') :'
-                        const implementsMatch = fullDeclaration.match(/\)\s*:\s*([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)/);
-                        if (implementsMatch) {
-                            const interfaces = implementsMatch[1].split(',').map(s => s.trim());
-                            currentInterfaces = interfaces;
+                        // Extract all interfaces/classes after ') :'
+                        // This handles cases like: ) : BaseClient(...), HolidayClient {
+                        const afterColon = fullDeclaration.match(/\)\s*:\s*(.+?)\s*\{/);
+                        if (afterColon) {
+                            const inheritanceSection = afterColon[1];
+                            const interfaces: string[] = [];
+
+                            // Split by comma, but be careful with nested parentheses and generics
+                            let currentPart = '';
+                            let parenDepth = 0;
+                            let angleBracketDepth = 0;
+
+                            for (let i = 0; i < inheritanceSection.length; i++) {
+                                const char = inheritanceSection[i];
+
+                                if (char === '(') parenDepth++;
+                                else if (char === ')') parenDepth--;
+                                else if (char === '<') angleBracketDepth++;
+                                else if (char === '>') angleBracketDepth--;
+                                else if (char === ',' && parenDepth === 0 && angleBracketDepth === 0) {
+                                    // Found a top-level comma, process current part
+                                    const typeName = extractTypeNameFromInheritance(currentPart);
+                                    if (typeName) interfaces.push(typeName);
+                                    currentPart = '';
+                                    continue;
+                                }
+
+                                currentPart += char;
+                            }
+
+                            // Process the last part
+                            const typeName = extractTypeNameFromInheritance(currentPart);
+                            if (typeName) interfaces.push(typeName);
+
+                            if (interfaces.length > 0) {
+                                currentInterfaces = interfaces;
+                            }
                         }
                     } else {
                         // Not an implementation, reset

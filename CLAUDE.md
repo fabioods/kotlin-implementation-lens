@@ -101,7 +101,17 @@ All settings use the `kotlinImplementationLens` namespace. Key settings:
 - `includeAbstractClasses`: Support abstract classes
 - `annotationFilters`: Spring Boot annotations to detect
 
-## Recent Major Changes (v2.3.0 - v2.3.1)
+## Recent Major Changes (v2.3.0 - v2.3.2)
+
+### Version 2.3.2
+- **Reverse Navigation Fix**: Correctly identifies interfaces when class extends parent class with constructor
+  - Added `extractTypeNameFromInheritance()` helper in `ReverseNavigationLensProvider`
+  - Filters out class constructors (with parentheses) and keeps interface names
+  - Handles complex patterns like: `class Impl(...) : BaseClass(...), Interface {`
+- **Parallel Search Execution**: All grep searches now run in parallel using `Promise.all()`
+  - Applied to `executeImplementationSearch` and `executeInterfaceDeclarationSearch`
+  - **2x performance improvement** for multi-module projects
+  - Sequential: 3.3s + 2.4s = 6s total → Parallel: ~3.3s total
 
 ### Version 2.3.1
 - **Extended Pattern Support**: Added support for modern Kotlin/Java constructs
