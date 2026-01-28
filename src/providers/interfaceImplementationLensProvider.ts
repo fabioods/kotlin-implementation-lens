@@ -11,6 +11,15 @@ import { getFilterEngine } from '../engine/filterEngine';
 import { getLogger } from '../utils/logger';
 import { getLanguage } from '../utils/pathUtils';
 
+/**
+ * Extended CodeLens with metadata for resolution
+ */
+interface InterfaceCodeLens extends vscode.CodeLens {
+    interfaceName: string;
+    searchConfig: SearchConfig;
+    filterMocks: boolean;
+}
+
 export class InterfaceImplementationLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
@@ -88,16 +97,14 @@ export class InterfaceImplementationLensProvider implements vscode.CodeLensProvi
             // Create range for CodeLens
             const range = new vscode.Range(i, 0, i, line.length);
 
-            // Create CodeLens
-            const codeLens = new vscode.CodeLens(range, {
-                title: '$(loading~spin) Loading implementations...',
-                command: ''
+            // Create CodeLens with metadata (command is undefined, will be resolved)
+            const codeLens: InterfaceCodeLens = Object.assign(new vscode.CodeLens(range), {
+                interfaceName,
+                searchConfig,
+                filterMocks
             });
 
             codeLenses.push(codeLens);
-
-            // Async: Find implementations and update CodeLens
-            this.findImplementations(interfaceName, searchConfig, codeLens, filterMocks);
         }
 
         return codeLenses;
@@ -110,28 +117,27 @@ export class InterfaceImplementationLensProvider implements vscode.CodeLensProvi
         codeLens: vscode.CodeLens,
         token: vscode.CancellationToken
     ): Promise<vscode.CodeLens> {
-        // CodeLens will be resolved asynchronously in findImplementations
-        return codeLens;
-    }
+        const lens = codeLens as InterfaceCodeLens;
 
-    /**
-     * Find implementations and update CodeLens
-     */
-    private async findImplementations(
-        interfaceName: string,
-        searchConfig: SearchConfig,
-        codeLens: vscode.CodeLens,
-        filterMocks: boolean
-    ): Promise<void> {
+        // If it doesn't have our metadata, return as-is
+        if (!lens.interfaceName) {
+            return codeLens;
+        }
+
         try {
             // Search for implementations
             let implementations = await getSearchEngine().searchImplementations(
-                interfaceName,
-                searchConfig
+                lens.interfaceName,
+                lens.searchConfig
             );
 
+            // Check cancellation after async operation
+            if (token.isCancellationRequested) {
+                return codeLens;
+            }
+
             // Filter mocks if enabled
-            if (filterMocks) {
+            if (lens.filterMocks) {
                 implementations = getFilterEngine().filterMocks(implementations);
             }
 
@@ -148,7 +154,7 @@ export class InterfaceImplementationLensProvider implements vscode.CodeLensProvi
                         ? '$(eye) 1 implementation'
                         : `$(eye) ${count} implementations`,
                 command: 'kotlin-implementation-lens.showImplementations',
-                arguments: [interfaceName, implementations]
+                arguments: [lens.interfaceName, implementations]
             };
 
         } catch (error) {
@@ -158,5 +164,7 @@ export class InterfaceImplementationLensProvider implements vscode.CodeLensProvi
                 command: ''
             };
         }
+
+        return codeLens;
     }
 }

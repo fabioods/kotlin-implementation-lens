@@ -10,6 +10,15 @@ import { getSearchEngine } from '../engine/searchEngine';
 import { getLogger } from '../utils/logger';
 import { getLanguage } from '../utils/pathUtils';
 
+/**
+ * Extended CodeLens with metadata for resolution
+ */
+interface ReverseCodeLens extends vscode.CodeLens {
+    interfaceNames: string[];
+    methodName: string;
+    searchConfig: SearchConfig;
+}
+
 export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
@@ -71,7 +80,6 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
         let foundOpeningBrace = false;
         let classDeclarationBuffer: string[] = [];
         let inClassDeclaration = false;
-        let interfaceDeclarationsCache: Map<string, any[]> = new Map(); // Cache per class
 
         for (let i = 0; i < lines.length; i++) {
             if (token.isCancellationRequested) {
@@ -118,9 +126,6 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
                             const interfaces = implementsMatch[1].split(',').map(s => s.trim());
                             currentInterfaces = interfaces;
                         }
-
-                        // Pre-fetch interface declarations once for this class (async, non-blocking)
-                        this.prefetchInterfaceDeclarations(currentInterfaces, searchConfig, interfaceDeclarationsCache);
                     } else {
                         // Not an implementation, reset
                         inClassDeclaration = false;
@@ -177,90 +182,47 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
             // Create range for CodeLens (at the beginning of the line)
             const range = new vscode.Range(i, 0, i, line.length);
 
-            // Create CodeLens
-            const codeLens = new vscode.CodeLens(range, {
-                title: '$(loading~spin) Loading interface...',
-                command: ''
+            // Create CodeLens with metadata (command is undefined, will be resolved)
+            const codeLens: ReverseCodeLens = Object.assign(new vscode.CodeLens(range), {
+                interfaceNames: [...currentInterfaces], // Copy array
+                methodName,
+                searchConfig
             });
 
             codeLenses.push(codeLens);
-
-            // Async: Find interface declarations and update CodeLens
-            this.findInterfaceDeclarations(
-                currentInterfaces,
-                methodName,
-                searchConfig,
-                codeLens,
-                interfaceDeclarationsCache
-            );
         }
 
         return codeLenses;
     }
 
     /**
-     * Resolve CodeLens
+     * Resolve CodeLens with actual interface information
      */
     async resolveCodeLens(
         codeLens: vscode.CodeLens,
         token: vscode.CancellationToken
     ): Promise<vscode.CodeLens> {
-        return codeLens;
-    }
+        const lens = codeLens as ReverseCodeLens;
 
-    /**
-     * Pre-fetch interface declarations for all interfaces in a class
-     */
-    private async prefetchInterfaceDeclarations(
-        interfaceNames: string[],
-        searchConfig: SearchConfig,
-        cache: Map<string, any[]>
-    ): Promise<void> {
-        for (const interfaceName of interfaceNames) {
-            if (cache.has(interfaceName)) {
-                continue; // Already cached
-            }
-
-            try {
-                const interfaces = await getSearchEngine().findInterfaceDeclarations(
-                    interfaceName,
-                    searchConfig
-                );
-                cache.set(interfaceName, interfaces);
-                getLogger().debug(`[ReverseNav] Pre-fetched ${interfaces.length} declarations for ${interfaceName}`);
-            } catch (error) {
-                getLogger().error(`Error pre-fetching interface ${interfaceName}`, error as Error);
-                cache.set(interfaceName, []); // Cache empty result to avoid retry
-            }
+        // If it doesn't have our metadata, return as-is
+        if (!lens.interfaceNames || !lens.methodName) {
+            return codeLens;
         }
-    }
 
-    /**
-     * Find interface declarations and update CodeLens
-     */
-    private async findInterfaceDeclarations(
-        interfaceNames: string[],
-        methodName: string,
-        searchConfig: SearchConfig,
-        codeLens: vscode.CodeLens,
-        cache: Map<string, any[]>
-    ): Promise<void> {
         try {
             // Find interfaces that declare this method
             const matchingInterfaces = [];
 
-            for (const interfaceName of interfaceNames) {
-                // Try cache first
-                let interfaces = cache.get(interfaceName);
-
-                // If not in local cache, fetch from search engine
-                if (!interfaces) {
-                    interfaces = await getSearchEngine().findInterfaceDeclarations(
-                        interfaceName,
-                        searchConfig
-                    );
-                    cache.set(interfaceName, interfaces);
+            for (const interfaceName of lens.interfaceNames) {
+                // Check cancellation before each async operation
+                if (token.isCancellationRequested) {
+                    return codeLens;
                 }
+
+                const interfaces = await getSearchEngine().findInterfaceDeclarations(
+                    interfaceName,
+                    lens.searchConfig
+                );
 
                 // Check if this interface has the method
                 for (const interfaceDecl of interfaces) {
@@ -270,12 +232,17 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
                 }
             }
 
+            // Check cancellation after all async operations
+            if (token.isCancellationRequested) {
+                return codeLens;
+            }
+
             if (matchingInterfaces.length === 0) {
                 codeLens.command = {
                     title: '', // Hide if no interface found
                     command: ''
                 };
-                return;
+                return codeLens;
             }
 
             // Update CodeLens with result
@@ -300,5 +267,7 @@ export class ReverseNavigationLensProvider implements vscode.CodeLensProvider {
                 command: ''
             };
         }
+
+        return codeLens;
     }
 }

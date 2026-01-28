@@ -217,7 +217,8 @@ export class ModuleDetector {
                     scan(fullPath, depth + 1);
                 }
             } catch (error) {
-                // Permission denied or other errors, skip
+                // Permission denied or other errors - log at debug level and continue
+                getLogger().debug(`Skipping directory during scan: ${dir}`, error as Error);
             }
         };
 

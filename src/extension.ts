@@ -13,6 +13,7 @@ import { registerGotoInterfaceCommand } from './commands/gotoInterface';
 import { registerClearCacheCommand } from './commands/clearCache';
 import { registerOpenSettingsCommand } from './commands/openSettings';
 import { registerShowHierarchyCommand } from './commands/showHierarchy';
+import { registerSetupPerformanceCommand } from './commands/setupPerformance';
 import { getCacheManager, startCacheCleanup } from './cache/cacheManager';
 import { getLogger } from './utils/logger';
 
@@ -32,6 +33,15 @@ export function activate(context: vscode.ExtensionContext) {
     logger.info('Kotlin/Java Implementation Lens extension activated');
 
     try {
+        // Clear cache on version update
+        const currentVersion = context.extension.packageJSON.version;
+        const previousVersion = context.globalState.get<string>('extensionVersion');
+
+        if (previousVersion !== currentVersion) {
+            logger.info(`Version changed from ${previousVersion || 'unknown'} to ${currentVersion}, clearing cache`);
+            getCacheManager().clear();
+            context.globalState.update('extensionVersion', currentVersion);
+        }
         // Initialize providers
         interfaceProvider = new InterfaceImplementationLensProvider();
         methodProvider = new MethodImplementationLensProvider();
@@ -58,6 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
         registerClearCacheCommand(context);
         registerOpenSettingsCommand(context);
         registerShowHierarchyCommand(context);
+        registerSetupPerformanceCommand(context);
 
         // Register refresh command
         context.subscriptions.push(

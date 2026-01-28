@@ -5,7 +5,6 @@
 import * as vscode from 'vscode';
 import * as child_process from 'child_process';
 import * as fs from 'fs';
-import * as path from 'path';
 import {
     Implementation,
     MethodImplementation,
@@ -13,13 +12,18 @@ import {
     SearchConfig,
     ISearchEngine
 } from '../types';
-import { extractImplementation, extractInterfaceName, extractMethodName, KotlinPatterns, JavaPatterns } from './patternBank';
-import { getWorkspaceRoot, normalizePath, getLanguage, toAbsolute } from '../utils/pathUtils';
+import { extractInterfaceName, extractMethodName } from './patternBank';
+import { getWorkspaceRoot, getLanguage, toAbsolute } from '../utils/pathUtils';
 import { getLogger } from '../utils/logger';
 import { getCacheManager } from '../cache/cacheManager';
 import { getModuleDetector } from './moduleDetector';
 
 export class SearchEngine implements ISearchEngine {
+    // Track pending searches to avoid duplicates
+    private pendingImplementationSearches: Map<string, Promise<Implementation[]>> = new Map();
+    private pendingMethodSearches: Map<string, Promise<MethodImplementation[]>> = new Map();
+    private pendingInterfaceSearches: Map<string, Promise<InterfaceDeclaration[]>> = new Map();
+
     /**
      * Resolve search paths: auto-detect or use configured
      */
@@ -53,11 +57,46 @@ export class SearchEngine implements ISearchEngine {
         searchConfig: SearchConfig
     ): Promise<Implementation[]> {
         const cacheKey = `interface:${interfaceName}`;
+
+        // Check cache first
         const cached = getCacheManager().get<Implementation[]>(cacheKey);
         if (cached) {
             return cached;
         }
 
+        // Check if there's already a pending search for this interface
+        const pendingSearch = this.pendingImplementationSearches.get(cacheKey);
+        if (pendingSearch) {
+            getLogger().debug(`Reusing pending search for: ${interfaceName}`);
+            return pendingSearch;
+        }
+
+        // Create new search promise with proper error handling
+        const searchPromise = this.executeImplementationSearch(interfaceName, searchConfig, cacheKey)
+            .catch((error) => {
+                // Log and re-throw to propagate error to all subscribers
+                getLogger().error(`Search failed for ${interfaceName}`, error as Error);
+                throw error;
+            })
+            .finally(() => {
+                // Clean up pending search after completion or error
+                this.pendingImplementationSearches.delete(cacheKey);
+            });
+
+        // Store pending promise
+        this.pendingImplementationSearches.set(cacheKey, searchPromise);
+
+        return searchPromise;
+    }
+
+    /**
+     * Execute the actual implementation search
+     */
+    private async executeImplementationSearch(
+        interfaceName: string,
+        searchConfig: SearchConfig,
+        cacheKey: string
+    ): Promise<Implementation[]> {
         const implementations: Implementation[] = [];
         const workspaceRoot = getWorkspaceRoot();
 
@@ -138,7 +177,7 @@ export class SearchEngine implements ISearchEngine {
             }
 
         } catch (error) {
-            getLogger().debug(`Search completed: ${searchPath}`);
+            getLogger().debug(`Search in path completed with error: ${searchPath}`, error as Error);
         }
 
         return implementations;
@@ -156,27 +195,20 @@ export class SearchEngine implements ISearchEngine {
         const files: string[] = [];
 
         try {
-            // Build include args - each extension needs its own --include flag
-            const includeArgs = extensions.map(ext => `--include="*.${ext}"`).join(' ');
+            // Use safe grep search (no shell injection)
+            const result = await this.executeGrepSearch(
+                interfaceName,
+                searchPath,
+                extensions,
+                excludePaths,
+                { recursive: true, filesOnly: true }
+            );
 
-            // Build exclude args
-            let excludeArgs = '';
-            for (const excludePath of excludePaths) {
-                excludeArgs += ` --exclude-dir="${excludePath}"`;
-            }
-
-            // Search for files mentioning the interface name (not pattern matching)
-            // This will find files even if class declaration spans multiple lines
-            const grepCommand = `grep -rl ${excludeArgs} "${interfaceName}" ${includeArgs} "${searchPath}"`;
-            getLogger().debug(`Finding candidates: ${grepCommand}`);
-
-            const result = await this.executeCommand(grepCommand);
             const lines = result.split('\n').filter(line => line.trim());
-
             files.push(...lines);
 
         } catch (error) {
-            getLogger().debug(`Candidate search completed: ${searchPath}`);
+            getLogger().debug(`Candidate search completed with error: ${searchPath}`, error as Error);
         }
 
         return files;
@@ -240,7 +272,7 @@ export class SearchEngine implements ISearchEngine {
             getLogger().debug(`Finished processing ${filePath}: found ${classDeclarationsFound} class declarations, ${implementations.length} implementations`);
 
         } catch (error) {
-            getLogger().debug(`Could not read file: ${filePath}`);
+            getLogger().debug(`Could not read file: ${filePath}`, error as Error);
         }
 
         return implementations;
@@ -393,28 +425,69 @@ export class SearchEngine implements ISearchEngine {
         searchConfig: SearchConfig
     ): Promise<MethodImplementation[]> {
         const cacheKey = `method:${interfaceName}:${methodName}`;
+
+        // Check cache first
         const cached = getCacheManager().get<MethodImplementation[]>(cacheKey);
         if (cached) {
             return cached;
         }
 
+        // Check if there's already a pending search for this method
+        const pendingSearch = this.pendingMethodSearches.get(cacheKey);
+        if (pendingSearch) {
+            getLogger().debug(`Reusing pending method search for: ${interfaceName}.${methodName}`);
+            return pendingSearch;
+        }
+
+        // Create new search promise with proper error handling
+        const searchPromise = this.executeMethodSearch(interfaceName, methodName, searchConfig, cacheKey)
+            .catch((error) => {
+                // Log and re-throw to propagate error to all subscribers
+                getLogger().error(`Method search failed for ${interfaceName}.${methodName}`, error as Error);
+                throw error;
+            })
+            .finally(() => {
+                // Clean up pending search after completion or error
+                this.pendingMethodSearches.delete(cacheKey);
+            });
+
+        // Store pending promise
+        this.pendingMethodSearches.set(cacheKey, searchPromise);
+
+        return searchPromise;
+    }
+
+    /**
+     * Execute the actual method search
+     */
+    private async executeMethodSearch(
+        interfaceName: string,
+        methodName: string,
+        searchConfig: SearchConfig,
+        cacheKey: string
+    ): Promise<MethodImplementation[]> {
         // First, find all implementations
         const implementations = await this.searchImplementations(interfaceName, searchConfig);
 
-        // Then, find the method in each implementation
-        const methodImplementations: MethodImplementation[] = [];
-
-        for (const impl of implementations) {
+        // Then, find the method in each implementation (in parallel for better performance)
+        const methodSearchPromises = implementations.map(async (impl) => {
             const methodLocation = await this.findMethodInClass(impl, methodName);
             if (methodLocation) {
-                methodImplementations.push({
+                return {
                     ...impl,
                     methodName,
                     lineNumber: methodLocation.lineNumber,
                     signature: methodLocation.signature
-                });
+                } as MethodImplementation;
             }
-        }
+            return null;
+        });
+
+        // Wait for all searches to complete in parallel
+        const results = await Promise.all(methodSearchPromises);
+
+        // Filter out null results
+        const methodImplementations = results.filter((impl): impl is MethodImplementation => impl !== null);
 
         // Cache results
         getCacheManager().set(cacheKey, methodImplementations);
@@ -524,11 +597,46 @@ export class SearchEngine implements ISearchEngine {
         searchConfig: SearchConfig
     ): Promise<InterfaceDeclaration[]> {
         const cacheKey = `interfaces:${className}`;
+
+        // Check cache first
         const cached = getCacheManager().get<InterfaceDeclaration[]>(cacheKey);
         if (cached) {
             return cached;
         }
 
+        // Check if there's already a pending search for this interface
+        const pendingSearch = this.pendingInterfaceSearches.get(cacheKey);
+        if (pendingSearch) {
+            getLogger().debug(`Reusing pending interface search for: ${className}`);
+            return pendingSearch;
+        }
+
+        // Create new search promise with proper error handling
+        const searchPromise = this.executeInterfaceDeclarationSearch(className, searchConfig, cacheKey)
+            .catch((error) => {
+                // Log and re-throw to propagate error to all subscribers
+                getLogger().error(`Interface search failed for ${className}`, error as Error);
+                throw error;
+            })
+            .finally(() => {
+                // Clean up pending search after completion or error
+                this.pendingInterfaceSearches.delete(cacheKey);
+            });
+
+        // Store pending promise
+        this.pendingInterfaceSearches.set(cacheKey, searchPromise);
+
+        return searchPromise;
+    }
+
+    /**
+     * Execute the actual interface declaration search
+     */
+    private async executeInterfaceDeclarationSearch(
+        className: string,
+        searchConfig: SearchConfig,
+        cacheKey: string
+    ): Promise<InterfaceDeclaration[]> {
         const interfaces: InterfaceDeclaration[] = [];
         const workspaceRoot = getWorkspaceRoot();
 
@@ -620,7 +728,7 @@ export class SearchEngine implements ISearchEngine {
                 }
             }
         } catch (error) {
-            getLogger().debug(`Interface search completed: ${searchPath}`);
+            getLogger().debug(`Interface search in path completed with error: ${searchPath}`, error as Error);
         }
 
         return interfaces;
@@ -634,13 +742,25 @@ export class SearchEngine implements ISearchEngine {
         searchPath: string,
         extensions: string[]
     ): Promise<InterfaceDeclaration | null> {
-        try {
-            // Build include args - each extension needs its own --include flag
-            const includeArgs = extensions.map(ext => `--include="*.${ext}"`).join(' ');
-            const pattern = `(interface|abstract class|sealed interface|sealed class).*${interfaceName}`;
-            const grepCommand = `grep -rn -E "${pattern}" ${includeArgs} "${searchPath}"`;
+        // Validate interface name to prevent injection
+        if (!this.isValidSearchTerm(interfaceName)) {
+            getLogger().warn(`Invalid interface name rejected: ${interfaceName}`);
+            return null;
+        }
 
-            const result = await this.executeCommand(grepCommand);
+        try {
+            // Build the pattern safely - interfaceName is already validated
+            const pattern = `(interface|abstract class|sealed interface|sealed class).*${interfaceName}`;
+
+            // Use safe grep search with extended regex (skip pattern validation since interfaceName is pre-validated)
+            const result = await this.executeGrepSearch(
+                pattern,
+                searchPath,
+                extensions,
+                [], // No excludes for this search
+                { recursive: true, filesOnly: false, extended: true, lineNumbers: true, skipValidation: true }
+            );
+
             const lines = result.split('\n').filter(line => line.trim());
 
             for (const line of lines) {
@@ -672,18 +792,95 @@ export class SearchEngine implements ISearchEngine {
                 }
             }
         } catch (error) {
-            getLogger().debug(`Interface declaration search completed`);
+            getLogger().debug(`Interface declaration search completed with error`, error as Error);
         }
 
         return null;
     }
 
     /**
-     * Execute a shell command
+     * Validate that a search term is safe (no shell metacharacters)
+     */
+    private isValidSearchTerm(term: string): boolean {
+        // Allow alphanumeric, underscores, and common identifier characters
+        // Reject anything that could be used for shell injection
+        return /^[A-Za-z_][A-Za-z0-9_]*$/.test(term);
+    }
+
+    /**
+     * Execute grep search safely using execFile (no shell interpolation)
+     * This prevents shell injection attacks
+     */
+    private executeGrepSearch(
+        searchTerm: string,
+        searchPath: string,
+        extensions: string[],
+        excludePaths: string[],
+        options: { recursive: boolean; filesOnly: boolean; extended?: boolean; lineNumbers?: boolean; skipValidation?: boolean }
+    ): Promise<string> {
+        return new Promise((resolve, _reject) => {
+            // Validate search term to prevent injection (unless skipped for pre-validated patterns)
+            if (!options.skipValidation && !this.isValidSearchTerm(searchTerm)) {
+                getLogger().warn(`Invalid search term rejected: ${searchTerm}`);
+                resolve('');
+                return;
+            }
+
+            // Build arguments array (safe from shell injection)
+            const args: string[] = [];
+
+            if (options.recursive) {
+                args.push('-r');
+            }
+            if (options.filesOnly) {
+                args.push('-l');
+            }
+            if (options.extended) {
+                args.push('-E');
+            }
+            if (options.lineNumbers) {
+                args.push('-n');
+            }
+
+            // Add exclude directories
+            for (const excludePath of excludePaths) {
+                args.push(`--exclude-dir=${excludePath}`);
+            }
+
+            // Add include patterns for file extensions
+            for (const ext of extensions) {
+                args.push(`--include=*.${ext}`);
+            }
+
+            // Add search term and path
+            args.push(searchTerm);
+            args.push(searchPath);
+
+            getLogger().debug(`Executing grep with args: ${args.join(' ')}`);
+
+            child_process.execFile('grep', args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, _stderr) => {
+                if (error) {
+                    // Grep returns exit code 1 when no matches found
+                    if ((error as child_process.ExecFileException).code === 1) {
+                        resolve('');
+                    } else {
+                        getLogger().debug(`Grep error: ${error.message}`);
+                        resolve(''); // Don't reject on grep errors, just return empty
+                    }
+                    return;
+                }
+                resolve(stdout);
+            });
+        });
+    }
+
+    /**
+     * Execute a shell command (deprecated - use executeGrepSearch instead for grep operations)
+     * @deprecated Use executeGrepSearch for grep operations to prevent shell injection
      */
     private executeCommand(command: string): Promise<string> {
         return new Promise((resolve, reject) => {
-            child_process.exec(command, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+            child_process.exec(command, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, _stderr) => {
                 if (error) {
                     // Grep returns exit code 1 when no matches found
                     if (error.code === 1) {

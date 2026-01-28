@@ -2,7 +2,7 @@
   "name": "kotlin-implementation-lens",
   "displayName": "Kotlin/Java Implementation Lens",
   "description": "Navigate between Kotlin/Java interfaces and their implementations with CodeLens. Supports abstract classes, Spring Boot annotations, sealed types, and more.",
-  "version": "2.2.3",
+  "version": "2.3.1",
   "publisher": "fabioods",
   "icon": "icon.png",
   "engines": {
@@ -57,6 +57,14 @@
       {
         "command": "kotlin-implementation-lens.openSettings",
         "title": "Kotlin/Java: Open Settings"
+      },
+      {
+        "command": "kotlin-implementation-lens.setupPerformance",
+        "title": "Kotlin/Java: Setup Performance Optimization"
+      },
+      {
+        "command": "kotlin-implementation-lens.refresh",
+        "title": "Kotlin/Java: Refresh CodeLens"
       }
     ],
     "configuration": {

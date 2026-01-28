@@ -11,6 +11,16 @@ import { getFilterEngine } from '../engine/filterEngine';
 import { getLogger } from '../utils/logger';
 import { getLanguage } from '../utils/pathUtils';
 
+/**
+ * Extended CodeLens with metadata for resolution
+ */
+interface MethodCodeLens extends vscode.CodeLens {
+    interfaceName: string;
+    methodName: string;
+    searchConfig: SearchConfig;
+    filterMocks: boolean;
+}
+
 export class MethodImplementationLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
@@ -121,57 +131,49 @@ export class MethodImplementationLensProvider implements vscode.CodeLensProvider
             // Create range for CodeLens (at the beginning of the line)
             const range = new vscode.Range(i, 0, i, line.length);
 
-            // Create CodeLens
-            const codeLens = new vscode.CodeLens(range, {
-                title: '$(loading~spin) Loading implementations...',
-                command: ''
+            // Create CodeLens with metadata (command is undefined, will be resolved)
+            const codeLens: MethodCodeLens = Object.assign(new vscode.CodeLens(range), {
+                interfaceName: currentInterface,
+                methodName,
+                searchConfig,
+                filterMocks
             });
 
             codeLenses.push(codeLens);
-
-            // Async: Find method implementations and update CodeLens
-            this.findMethodImplementations(
-                currentInterface,
-                methodName,
-                searchConfig,
-                codeLens,
-                filterMocks
-            );
         }
 
         return codeLenses;
     }
 
     /**
-     * Resolve CodeLens
+     * Resolve CodeLens with actual implementation count
      */
     async resolveCodeLens(
         codeLens: vscode.CodeLens,
         token: vscode.CancellationToken
     ): Promise<vscode.CodeLens> {
-        return codeLens;
-    }
+        const lens = codeLens as MethodCodeLens;
 
-    /**
-     * Find method implementations and update CodeLens
-     */
-    private async findMethodImplementations(
-        interfaceName: string,
-        methodName: string,
-        searchConfig: SearchConfig,
-        codeLens: vscode.CodeLens,
-        filterMocks: boolean
-    ): Promise<void> {
+        // If it doesn't have our metadata, return as-is
+        if (!lens.interfaceName || !lens.methodName) {
+            return codeLens;
+        }
+
         try {
             // Search for method implementations
             let implementations = await getSearchEngine().searchMethodImplementations(
-                interfaceName,
-                methodName,
-                searchConfig
+                lens.interfaceName,
+                lens.methodName,
+                lens.searchConfig
             );
 
+            // Check cancellation after async operation
+            if (token.isCancellationRequested) {
+                return codeLens;
+            }
+
             // Filter mocks if enabled
-            if (filterMocks) {
+            if (lens.filterMocks) {
                 implementations = getFilterEngine().filterMocks(implementations);
             }
 
@@ -185,7 +187,7 @@ export class MethodImplementationLensProvider implements vscode.CodeLensProvider
                         ? '$(eye) 1 implementation'
                         : `$(eye) ${count} implementations`,
                 command: 'kotlin-implementation-lens.showMethodImplementations',
-                arguments: [interfaceName, methodName, implementations]
+                arguments: [lens.interfaceName, lens.methodName, implementations]
             };
 
         } catch (error) {
@@ -195,5 +197,7 @@ export class MethodImplementationLensProvider implements vscode.CodeLensProvider
                 command: ''
             };
         }
+
+        return codeLens;
     }
 }

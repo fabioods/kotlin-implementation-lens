@@ -33,9 +33,12 @@ export class Logger implements ILogger {
         }
     }
 
-    debug(message: string): void {
+    debug(message: string, error?: Error): void {
         const timestamp = new Date().toISOString();
         this.outputChannel.appendLine(`[DEBUG ${timestamp}] ${message}`);
+        if (error) {
+            this.outputChannel.appendLine(`  ${error.message}`);
+        }
     }
 
     show(): void {

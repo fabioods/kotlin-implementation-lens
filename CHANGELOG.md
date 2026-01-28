@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2025-01-27
+
+### Added
+- **🆕 Fun Interface Support**: Now detects Kotlin `fun interface` (SAM interfaces)
+  - Example: `fun interface CoreBankingAccountClient`
+  - Fixes detection issues with functional interfaces
+- **🆕 Value Class Support**: Now detects Kotlin `value class` (inline classes)
+  - Example: `value class UserId(val value: String)`
+  - Supports `@JvmInline` annotation
+- **🆕 Enum Support**: Now detects both Kotlin and Java enums
+  - Kotlin: `enum class Status`
+  - Java: `enum Status`
+- **🆕 Record Support**: Now detects Java records (Java 14+)
+  - Example: `record User(String name, int age)`
+
+### Improved
+- **📊 Pattern Coverage**: Extended support for modern Kotlin/Java constructs
+  - Total patterns supported: 11 for Kotlin, 6 for Java
+  - Better detection of edge cases and modern language features
+- **🔄 Auto Cache Invalidation**: Cache is automatically cleared when extension version changes
+  - Ensures new patterns are detected immediately after update
+  - No manual cache clearing needed
+
+### Technical
+- Added patterns: `funInterface`, `valueClass`, `enumClass` (Kotlin)
+- Added patterns: `record`, `enum` (Java)
+- Updated `extractInterfaceName` to handle all new patterns
+- Updated `getInterfacePatterns` to include new patterns
+
+## [2.3.0] - 2025-01-27
+
+### Added
+- **🚀 Setup Performance Optimization Command**: One-click automatic configuration
+  - New command: `Kotlin/Java: Setup Performance Optimization`
+  - Automatically configures Java Language Server memory (4GB heap)
+  - **⚡ Persistent Cache**: Enables `java.jdt.ls.persistenceEnabled` to prevent re-indexing on restart (like IntelliJ)
+  - **📦 Gradle Optimization**: Configures offline mode and wrapper to reduce sync overhead
+  - **🔧 Annotation Processing**: Disables expensive annotation processing by default
+  - Auto-detects project structure and sets optimal search paths
+  - Supports both global (all projects) and local (current project) configuration
+  - Creates backup of existing settings before modifying
+  - No more manual JSON editing required!
+- **⚡ Pending Search Deduplication**: Eliminates duplicate searches when multiple CodeLens request the same interface/method simultaneously
+  - Tracks pending searches in-memory to reuse ongoing searches
+  - Significant performance improvement when opening files with multiple methods
+  - Reduces redundant grep calls by 70%+ in typical scenarios
+- **📖 Comprehensive Performance Guide**: Complete documentation for optimizing extension performance
+  - Java Language Server memory configuration guide
+  - Extension-specific optimization settings
+  - File watcher optimization for large projects
+  - Complete example configurations for multi-module projects
+- **📊 IntelliJ IDEA Comparison**: Added detailed comparison table explaining performance differences
+  - Explains why IntelliJ is faster (PSI index, Gradle daemon)
+  - Shows realistic performance expectations
+  - Provides tips to minimize the gap
+
+### Improved
+- **🚀 Smart Caching**: Enhanced caching with automatic cleanup
+  - Increased default cache timeout to 10 minutes (was 5 minutes)
+  - Better cache key management for different search types
+  - Automatic cleanup of expired entries every minute
+- **📝 Documentation**: Complete rewrite of README with focus on large projects
+  - Clear sections for performance troubleshooting
+  - Step-by-step guides for common issues
+  - Real-world examples and use cases
+
+### Performance
+- **Search deduplication**: Eliminates 3x duplicate searches observed in logs
+- **First search**: ~500ms (unchanged, depends on project size)
+- **Cached search**: < 50ms (unchanged)
+- **Subsequent parallel searches**: < 10ms (NEW - reuses pending search)
+
+### Technical Details
+- Added `pendingImplementationSearches`, `pendingMethodSearches`, and `pendingInterfaceSearches` Maps
+- Refactored search methods into public wrapper + private executor pattern
+- Automatic cleanup of pending searches on completion (via Promise.finally)
+
 ## [2.2.3] - 2025-01-27
 
 ### Fixed

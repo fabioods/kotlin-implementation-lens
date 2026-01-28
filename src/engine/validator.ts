@@ -3,9 +3,8 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import { Implementation, InterfaceDeclaration, MethodDeclaration, ValidationResult, IValidator } from '../types';
-import { extractMethodName, isCommentLine, JavaPatterns, KotlinPatterns } from './patternBank';
+import { extractMethodName, isCommentLine } from './patternBank';
 import { getLogger } from '../utils/logger';
 import { getLanguage } from '../utils/pathUtils';
 
@@ -197,14 +196,14 @@ export class Validator implements IValidator {
      */
     private extractSignature(line: string): string {
         // Simple signature extraction - can be enhanced
-        const match = line.match(/fun\s+\w+\s*\([^)]*\)|[\w<>.*\[\]]+\s+\w+\s*\([^)]*\)/);
+        const match = line.match(/fun\s+\w+\s*\([^)]*\)|[\w<>.*[\]]+\s+\w+\s*\([^)]*\)/);
         return match ? match[0] : '';
     }
 
     /**
      * Check if method is abstract
      */
-    private isAbstractMethod(line: string, language: 'kotlin' | 'java'): boolean {
+    private isAbstractMethod(line: string, _language: 'kotlin' | 'java'): boolean {
         return line.includes('abstract');
     }
 

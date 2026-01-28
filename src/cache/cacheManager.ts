@@ -6,11 +6,12 @@ import { ICacheManager, CacheEntry } from '../types';
 import { getLogger } from '../utils/logger';
 
 export class CacheManager implements ICacheManager {
-    private interfaceCache: Map<string, CacheEntry<any>>;
-    private implementationCache: Map<string, CacheEntry<any>>;
-    private methodCache: Map<string, CacheEntry<any>>;
+    private interfaceCache: Map<string, CacheEntry<unknown>>;
+    private implementationCache: Map<string, CacheEntry<unknown>>;
+    private methodCache: Map<string, CacheEntry<unknown>>;
     private filePathIndex: Map<string, Set<string>>;
     private ttl: number;
+    private negativeTtl: number; // Shorter TTL for empty/negative results
 
     constructor(ttl: number = 5 * 60 * 1000) { // Default: 5 minutes
         this.interfaceCache = new Map();
@@ -18,6 +19,7 @@ export class CacheManager implements ICacheManager {
         this.methodCache = new Map();
         this.filePathIndex = new Map();
         this.ttl = ttl;
+        this.negativeTtl = Math.min(ttl, 60 * 1000); // Negative cache: 1 minute or TTL, whichever is shorter
     }
 
     /**
@@ -30,19 +32,30 @@ export class CacheManager implements ICacheManager {
         for (const cache of caches) {
             const cached = cache.get(key);
             if (cached) {
+                // Determine TTL based on whether this is a negative cache entry
+                const isNegative = this.isNegativeCacheEntry(cached.value);
+                const effectiveTtl = isNegative ? this.negativeTtl : this.ttl;
+
                 // Check TTL
-                if (Date.now() - cached.timestamp > this.ttl) {
+                if (Date.now() - cached.timestamp > effectiveTtl) {
                     cache.delete(key);
-                    getLogger().debug(`Cache expired for key: ${key}`);
+                    getLogger().debug(`Cache expired for key: ${key} (negative: ${isNegative})`);
                     return null;
                 }
-                getLogger().debug(`Cache hit for key: ${key}`);
+                getLogger().debug(`Cache hit for key: ${key} (negative: ${isNegative})`);
                 return cached.value as T;
             }
         }
 
         getLogger().debug(`Cache miss for key: ${key}`);
         return null;
+    }
+
+    /**
+     * Check if a cached value is a negative cache entry (empty result)
+     */
+    private isNegativeCacheEntry(value: unknown): boolean {
+        return Array.isArray(value) && value.length === 0;
     }
 
     /**
@@ -54,13 +67,18 @@ export class CacheManager implements ICacheManager {
             timestamp: Date.now()
         };
 
+        // Log if this is a negative cache entry
+        if (this.isNegativeCacheEntry(value)) {
+            getLogger().debug(`Caching negative result for key: ${key} (TTL: ${this.negativeTtl}ms)`);
+        }
+
         // Determine which cache to use based on key prefix
         if (key.startsWith('interface:')) {
-            this.interfaceCache.set(key, entry);
+            this.interfaceCache.set(key, entry as CacheEntry<unknown>);
         } else if (key.startsWith('method:')) {
-            this.methodCache.set(key, entry);
+            this.methodCache.set(key, entry as CacheEntry<unknown>);
         } else {
-            this.implementationCache.set(key, entry);
+            this.implementationCache.set(key, entry as CacheEntry<unknown>);
         }
 
         getLogger().debug(`Cached value for key: ${key}`);
@@ -131,9 +149,13 @@ export class CacheManager implements ICacheManager {
         const now = Date.now();
         let expiredCount = 0;
 
-        const cleanupCache = (cache: Map<string, CacheEntry<any>>) => {
+        const cleanupCache = (cache: Map<string, CacheEntry<unknown>>) => {
             for (const [key, entry] of cache.entries()) {
-                if (now - entry.timestamp > this.ttl) {
+                // Use appropriate TTL based on whether it's a negative cache entry
+                const isNegative = this.isNegativeCacheEntry(entry.value);
+                const effectiveTtl = isNegative ? this.negativeTtl : this.ttl;
+
+                if (now - entry.timestamp > effectiveTtl) {
                     cache.delete(key);
                     expiredCount++;
                 }
@@ -154,7 +176,8 @@ export class CacheManager implements ICacheManager {
      */
     setTTL(ttl: number): void {
         this.ttl = ttl;
-        getLogger().info(`Cache TTL updated to ${ttl}ms`);
+        this.negativeTtl = Math.min(ttl, 60 * 1000); // Recalculate negative TTL
+        getLogger().info(`Cache TTL updated to ${ttl}ms (negative: ${this.negativeTtl}ms)`);
     }
 
     /**

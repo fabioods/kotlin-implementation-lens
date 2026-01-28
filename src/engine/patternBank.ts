@@ -9,6 +9,9 @@ export const KotlinPatterns = {
     // Standard interface
     interface: /^\s*(?:public\s+)?interface\s+([A-Z]\w*)/,
 
+    // Fun interface (SAM interface - Kotlin 1.4+)
+    funInterface: /^\s*(?:public\s+)?fun\s+interface\s+([A-Z]\w*)/,
+
     // Sealed interface (Kotlin 1.5+)
     sealedInterface: /^\s*sealed\s+interface\s+([A-Z]\w*)/,
 
@@ -17,6 +20,12 @@ export const KotlinPatterns = {
 
     // Sealed class
     sealedClass: /^\s*sealed\s+class\s+([A-Z]\w*)/,
+
+    // Value class (inline class - Kotlin 1.5+)
+    valueClass: /^\s*(?:@JvmInline\s+)?value\s+class\s+([A-Z]\w*)/,
+
+    // Enum class
+    enumClass: /^\s*enum\s+class\s+([A-Z]\w*)/,
 
     // Class implementing interface (with optional generics, primary constructor, and supertype)
     classImplements: /class\s+([A-Z]\w*)(?:\s*<[^>]+>)?\s*(?:\([^)]*\))?\s*:\s*([A-Z]\w*(?:\s*<[^>]*>)?)/,
@@ -62,6 +71,12 @@ export const JavaPatterns = {
     // Abstract class
     abstractClass: /^\s*(?:public\s+)?abstract\s+class\s+([A-Z]\w*)/,
 
+    // Record (Java 14+)
+    record: /^\s*(?:public\s+)?record\s+([A-Z]\w*)/,
+
+    // Enum
+    enum: /^\s*(?:public\s+)?enum\s+([A-Z]\w*)/,
+
     // Class implementing interface
     classImplements: /class\s+([A-Z]\w*)(?:\s*<[^>]+>)?\s+implements\s+([A-Z]\w*(?:\s*<[^>]*>)?)/,
 
@@ -72,16 +87,16 @@ export const JavaPatterns = {
     classExtendsImplements: /class\s+([A-Z]\w*)(?:\s*<[^>]+>)?\s+extends\s+[A-Z]\w*\s+implements\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)/,
 
     // Method declaration (with return type)
-    method: /^\s*(?:public\s+)?(?:protected\s+)?(?:private\s+)?(?:[\w<>.*\[\]]+\s+)?([a-z_]\w*)\s*\(/,
+    method: /^\s*(?:public\s+)?(?:protected\s+)?(?:private\s+)?(?:[\w<>.*[\]]+\s+)?([a-z_]\w*)\s*\(/,
 
     // Abstract method
-    abstractMethod: /^\s*(?:public\s+)?(?:protected\s+)?abstract\s+[\w<>.*\[\]]+\s+([a-z_]\w*)\s*\(/,
+    abstractMethod: /^\s*(?:public\s+)?(?:protected\s+)?abstract\s+[\w<>.*[\]]+\s+([a-z_]\w*)\s*\(/,
 
     // Override annotation followed by method
-    overrideMethod: /@Override\s+(?:public\s+)?(?:[\w<>.*\[\]]+\s+)?([a-z_]\w*)\s*\(/,
+    overrideMethod: /@Override\s+(?:public\s+)?(?:[\w<>.*[\]]+\s+)?([a-z_]\w*)\s*\(/,
 
     // Default method (Java 8+)
-    defaultMethod: /^\s*(?:public\s+)?default\s+[\w<>.*\[\]]+\s+([a-z_]\w*)\s*\(/,
+    defaultMethod: /^\s*(?:public\s+)?default\s+[\w<>.*[\]]+\s+([a-z_]\w*)\s*\(/,
 
     // Spring Boot annotations
     springAnnotations: /@(Component|Service|Repository|Controller|RestController|Bean|Configuration)\s*(?:\([^)]*\))?/,
@@ -224,6 +239,12 @@ export function extractInterfaceName(line: string, language: 'kotlin' | 'java'):
     let match = line.match(patterns.interface);
     if (match) return match[1];
 
+    // Try fun interface (SAM interface - Kotlin only)
+    if (language === 'kotlin') {
+        match = line.match(KotlinPatterns.funInterface);
+        if (match) return match[1];
+    }
+
     // Try sealed interface (Kotlin only)
     if (language === 'kotlin') {
         match = line.match(KotlinPatterns.sealedInterface);
@@ -237,6 +258,24 @@ export function extractInterfaceName(line: string, language: 'kotlin' | 'java'):
     // Try sealed class (Kotlin only)
     if (language === 'kotlin') {
         match = line.match(KotlinPatterns.sealedClass);
+        if (match) return match[1];
+
+        // Try value class (inline class)
+        match = line.match(KotlinPatterns.valueClass);
+        if (match) return match[1];
+
+        // Try enum class
+        match = line.match(KotlinPatterns.enumClass);
+        if (match) return match[1];
+    }
+
+    // Try record (Java only)
+    if (language === 'java') {
+        match = line.match(JavaPatterns.record);
+        if (match) return match[1];
+
+        // Try enum
+        match = line.match(JavaPatterns.enum);
         if (match) return match[1];
     }
 
@@ -298,7 +337,6 @@ export function extractMethodName(line: string, language: 'kotlin' | 'java'): st
  */
 export function extractAnnotations(line: string): string[] {
     const annotations: string[] = [];
-    const pattern = CommonPatterns.import; // Reuse any annotation pattern
     const kotlinMatch = line.match(KotlinPatterns.springAnnotations);
     const javaMatch = line.match(JavaPatterns.springAnnotations);
 
@@ -322,14 +360,19 @@ export function getInterfacePatterns(language: 'kotlin' | 'java'): RegExp[] {
     if (language === 'kotlin') {
         return [
             KotlinPatterns.interface,
+            KotlinPatterns.funInterface,
             KotlinPatterns.sealedInterface,
             KotlinPatterns.abstractClass,
-            KotlinPatterns.sealedClass
+            KotlinPatterns.sealedClass,
+            KotlinPatterns.valueClass,
+            KotlinPatterns.enumClass
         ];
     } else {
         return [
             JavaPatterns.interface,
-            JavaPatterns.abstractClass
+            JavaPatterns.abstractClass,
+            JavaPatterns.record,
+            JavaPatterns.enum
         ];
     }
 }
